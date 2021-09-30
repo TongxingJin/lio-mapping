@@ -136,6 +136,7 @@ inline Eigen::Matrix<typename Derived::Scalar, 3, 3> SkewSymmetric(const Eigen::
   return m;
 }
 
+// 求解四元数的左矩阵，右矩阵
 template<typename Derived>
 inline Eigen::Matrix<typename Derived::Scalar, 4, 4> LeftQuatMatrix(const Eigen::QuaternionBase<Derived> &q) {
   Eigen::Matrix<typename Derived::Scalar, 4, 4> m;

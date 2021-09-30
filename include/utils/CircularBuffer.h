@@ -166,7 +166,7 @@ class CircularBuffer {
       buffer_[size_] = element;
       ++size_;
     } else {
-      buffer_[start_idx_] = element;
+      buffer_[start_idx_] = element;// 在不清理的情况下，一旦size==capacity，那么新element就会开始覆盖start_idx处的元素
       start_idx_ = (start_idx_ + 1) % capacity_;
     }
   }

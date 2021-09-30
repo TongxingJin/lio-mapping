@@ -121,7 +121,7 @@ Estimator::Estimator(EstimatorConfig config, MeasurementManagerConfig mm_config)
 
   SetupAllEstimatorConfig(config, mm_config);
 
-  para_pose_ = new double *[estimator_config_.opt_window_size + 1];
+  para_pose_ = new double *[estimator_config_.opt_window_size + 1];// new 指针数组
   para_speed_bias_ = new double *[estimator_config_.opt_window_size + 1];
   for (int i = 0; i < estimator_config_.opt_window_size + 1;
        ++i) {
@@ -288,8 +288,9 @@ void Estimator::ClearState() {
 }
 
 void Estimator::SetupRos(ros::NodeHandle &nh) {
-  MeasurementManager::SetupRos(nh);
-  PointMapping::SetupRos(nh, false);
+  // 两个基类的初始化
+  MeasurementManager::SetupRos(nh);// MeasurementManager两个回调函数，接收IMU和compact_data_topic点云，push到buffer里
+  PointMapping::SetupRos(nh, false);// 回调函数接收来自PointOdometry的激光里程计特征cloud和odo位姿解析到成员变量中，设置标志位
 
   wi_trans_.frame_id_ = "/camera_init";
   wi_trans_.child_frame_id_ = "/world";
@@ -347,6 +348,7 @@ void Estimator::ProcessImu(double dt,
     linear_acceleration_buf_.push(vector<Vector3d>());
     angular_velocity_buf_.push(vector<Vector3d>());
 
+    // 设置初始地图位姿
     Eigen::Matrix3d I3x3;
     I3x3.setIdentity();
     Ps_.push(Vector3d{0, 0, 0});
@@ -376,14 +378,16 @@ void Estimator::ProcessImu(double dt,
 //  }
 
   // NOTE: Do not update tmp_pre_integration_ until first laser comes
-  if (cir_buf_count_ != 0) {
+  if (cir_buf_count_ != 0) { // 如果窗口里面已经有帧
 
+    // 相对于上一关键帧积分
     tmp_pre_integration_->push_back(dt, linear_acceleration, angular_velocity);
 
     dt_buf_[cir_buf_count_].push_back(dt);
     linear_acceleration_buf_[cir_buf_count_].push_back(linear_acceleration);
     angular_velocity_buf_[cir_buf_count_].push_back(angular_velocity);
 
+    // 在地图坐标系下积分
     size_t j = cir_buf_count_;
     Vector3d un_acc_0 = Rs_[j] * (acc_last_ - Bas_[j]) + g_vec_;
     Vector3d un_gyr = 0.5 * (gyr_last_ + angular_velocity) - Bgs_[j];
@@ -397,7 +401,7 @@ void Estimator::ProcessImu(double dt,
     imu_tt.time = header.stamp.toSec();
     imu_tt.transform.pos = Ps_[j].cast<float>();
     imu_tt.transform.rot = Eigen::Quaternionf(Rs_[j].cast<float>());
-    imu_stampedtransforms.push(imu_tt);
+    imu_stampedtransforms.push(imu_tt);// buffer保持一定大小
 //    DLOG(INFO) << imu_tt.transform;
   }
   acc_last_ = linear_acceleration;
@@ -502,10 +506,11 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
         }
 
         bool init_result = false;
+        // 一开始cir_buf_count_比较小，一直进入else积累数据
         if (cir_buf_count_ == estimator_config_.window_size) {
           tic_toc_.Tic();
 
-          if (!estimator_config_.imu_factor) {
+          if (!estimator_config_.imu_factor) { // 不使用imu数据
             init_result = true;
             // TODO: update states Ps_
             for (size_t i = 0; i < estimator_config_.window_size + 1;
@@ -515,7 +520,7 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
               Ps_[i] = trans_bi.pos.template cast<double>();
               Rs_[i] = trans_bi.rot.normalized().toRotationMatrix().template cast<double>();
             }
-          } else {
+          } else { // 使用IMU数据
 
             if (extrinsic_stage_ == 2) {
               // TODO: move before initialization
@@ -605,7 +610,7 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
           DLOG(INFO) << "pre size: " << pre_integrations_.size();
           DLOG(INFO) << "all_laser_transforms_ size: " << all_laser_transforms_.size();
 
-          SlideWindow();
+          SlideWindow();// init_local_map_一直为FALSE,这里只是push了一系列的传感器数据和当前状态
 
           DLOG(INFO) << "Ps size: " << Ps_.size();
           DLOG(INFO) << "pre size: " << pre_integrations_.size();
@@ -775,16 +780,19 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
 
 void Estimator::ProcessCompactData(const sensor_msgs::PointCloud2ConstPtr &compact_data,
                                    const std_msgs::Header &header) {
+  // 解析compact中的特征点云信息到成员变量中
   /// 1. process compact data
   PointMapping::CompactDataHandler(compact_data);
 
   if (stage_flag_ == INITED) {
+    // 倒数第二个
     Transform trans_prev(Eigen::Quaterniond(Rs_[estimator_config_.window_size - 1]).cast<float>(),
                          Ps_[estimator_config_.window_size - 1].cast<float>());
+    // 最后一个
     Transform trans_curr(Eigen::Quaterniond(Rs_.last()).cast<float>(),
                          Ps_.last().cast<float>());
 
-    Transform d_trans = trans_prev.inverse() * trans_curr;
+    Transform d_trans = trans_prev.inverse() * trans_curr;// TODO:这里是相邻两个imu消息之间的位姿吧？
 
     Transform transform_incre(transform_bef_mapped_.inverse() * transform_sum_.transform());
 
@@ -796,6 +804,7 @@ void Estimator::ProcessCompactData(const sensor_msgs::PointCloud2ConstPtr &compa
 //
 //    DLOG(INFO) << "tobe: " << transform_tobe_mapped_ * transform_incre;
 
+    // 利用imu积分或者匀速运动假设，预测新位姿
     if (estimator_config_.imu_factor) {
       //    // WARNING: or using direct date?
       transform_tobe_mapped_bef_ = transform_tobe_mapped_ * transform_lb_ * d_trans * transform_lb_.inverse();
@@ -809,7 +818,7 @@ void Estimator::ProcessCompactData(const sensor_msgs::PointCloud2ConstPtr &compa
 
   if (stage_flag_ != INITED || !estimator_config_.imu_factor) {
     /// 2. process decoded data
-    PointMapping::Process();
+    PointMapping::Process();// scan2map匹配，结果保存在transform_tobe_mapped_
   } else {
 //    for (int i = 0; i < laser_cloud_surf_last_->size(); ++i) {
 //      PointT &p = laser_cloud_surf_last_->at(i);
@@ -2665,20 +2674,24 @@ void Estimator::SlideWindow() { // NOTE: this function is only for the states an
 
 }
 
+// 独立的线程中工作
+// 回顾，Estimator接收另一个线程odo发布的点云和odo位姿信息，imu信息
 void Estimator::ProcessEstimation() {
 
   while (true) {
     PairMeasurements measurements;
     std::unique_lock<std::mutex> buf_lk(buf_mutex_);
+    // 释放锁，wait直到收到notify且lambda函数返回值为true，重新上锁
+    // measureme接收到了返回值，包含IMU数组和compact点云
     con_.wait(buf_lk, [&] {
       return (measurements = GetMeasurements()).size() != 0;
     });
-    buf_lk.unlock();
+    buf_lk.unlock();// 释放锁
 
 //    DLOG(INFO) << "measurement obtained: " << measurements.size() << ", first imu data size: "
 //              << measurements.front().first.size();
 
-    thread_mutex_.lock();
+    thread_mutex_.lock();// TODO:这里是为了防止哪里的竞争呢
     for (auto &measurement : measurements) {
       ROS_DEBUG_STREAM("measurements ratio: 1:" << measurement.first.size());
       CompactDataConstPtr compact_data_msg = measurement.second;
@@ -2688,6 +2701,8 @@ void Estimator::ProcessEstimation() {
       for (auto &imu_msg : measurement.first) {
         double imu_time = imu_msg->header.stamp.toSec();
         double laser_odom_time = compact_data_msg->header.stamp.toSec() + mm_config_.msg_time_delay;
+        // 理论上最后一个imu的时间戳会大于scan
+        // ProcessImu中会进行中值积分，在地图坐标系下
         if (imu_time <= laser_odom_time) {
 
           if (curr_time_ < 0) {
@@ -2706,11 +2721,11 @@ void Estimator::ProcessEstimation() {
           ProcessImu(dt, Vector3d(ax, ay, az), Vector3d(rx, ry, rz), imu_msg->header);
 
         } else {
-
+          // 插值出scan时刻的imu
           // NOTE: interpolate imu measurement
           double dt_1 = laser_odom_time - curr_time_;
           double dt_2 = imu_time - laser_odom_time;
-          curr_time_ = laser_odom_time;
+          curr_time_ = laser_odom_time;// current_time赋值成scan时间，下次就从这里开始
           ROS_ASSERT(dt_1 >= 0);
           ROS_ASSERT(dt_2 >= 0);
           ROS_ASSERT(dt_1 + dt_2 > 0);

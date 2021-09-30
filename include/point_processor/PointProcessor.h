@@ -176,9 +176,9 @@ class PointProcessor {
   ros::Time sweep_start_;
   ros::Time scan_time_;
 
-  float lower_bound_;
+  float lower_bound_;// 垂直方向角度范围
   float upper_bound_;
-  int num_rings_;
+  int num_rings_;// 线数
   float factor_;
   PointProcessorConfig config_;
   TicToc tic_toc_;

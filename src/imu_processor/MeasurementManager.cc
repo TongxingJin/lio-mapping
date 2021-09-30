@@ -51,6 +51,7 @@ void MeasurementManager::SetupRos(ros::NodeHandle &nh) {
 //      nh_.subscribe<nav_msgs::Odometry>(mm_config_.laser_odom_topic, 10, &MeasurementManager::LaserOdomHandler, this);
 }
 
+// 尝试获取所有成组的imu数据vector和点云特征
 PairMeasurements MeasurementManager::GetMeasurements() {
 
   PairMeasurements measurements;
@@ -87,7 +88,8 @@ PairMeasurements MeasurementManager::GetMeasurements() {
       }
 
       // NOTE: one message after laser odom msg
-      imu_measurements.emplace_back(imu_buf_.front());
+      imu_measurements.emplace_back(imu_buf_.front());// 多push一个，保证覆盖scan+delay时间
+      // 对于下一帧scan而言，没有比scan起始时间更早的数据了，
 
       if (imu_measurements.empty()) {
         ROS_DEBUG("no imu between two image");

@@ -140,15 +140,15 @@ void Run() {
   }
 
   Estimator estimator(estimator_config);
-  estimator.SetupRos(*nh_ptr);
+  estimator.SetupRos(*nh_ptr);// 多重继承，回调函数接收IMU和点云消息，接收点云特征scan和odo位姿
 
   int odom_io = fs_settings["odom_io"];
 
   PointOdometry odometry(0.1, odom_io);
-  odometry.SetupRos(*nh_ptr);
+  odometry.SetupRos(*nh_ptr);// 回调函数接收特征点云，发布特征点云和odo位姿，有可能集合成一个cloud发布
   odometry.Reset();
 
-  thread odom(&PointOdometry::Spin, &odometry);
+  thread odom(&PointOdometry::Spin, &odometry);// 帧间匹配，发布里程计位姿
 
   thread measurement_manager(&Estimator::ProcessEstimation, &estimator);
 

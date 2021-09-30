@@ -130,6 +130,7 @@ class PointOdometry {
     return true;
   }
 
+  // 独立线程运行
   void Spin() {
     ros::Rate rate(200);
     bool status = ros::ok();

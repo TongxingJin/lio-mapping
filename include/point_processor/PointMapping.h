@@ -215,7 +215,7 @@ class PointMapping {
 
   Transform transform_sum_;
   Transform transform_tobe_mapped_;
-  Transform transform_bef_mapped_;
+  Transform transform_bef_mapped_;// imu积分得到的位姿，也是transform_tobe_mapped_的起点
   Transform transform_aft_mapped_;
 
   pcl::VoxelGrid<pcl::PointXYZI> down_size_filter_corner_;   ///< voxel filter for down sizing corner clouds

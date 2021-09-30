@@ -142,6 +142,7 @@ void PointMapping::SetupRos(ros::NodeHandle &nh, bool enable_sub) {
   /// for test
 //  pub_diff_odometry_ = nh.advertise<nav_msgs::Odometry>("/laser_odom_to_last", 5);
 
+  // 接收激光里程计的特征scan和odo位姿
   if (enable_sub) {
 
     if (compact_data_) {
@@ -194,6 +195,7 @@ void PointMapping::CompactDataHandler(const sensor_msgs::PointCloud2ConstPtr &co
     return;
   }
 
+  // odo位姿
   {
     compact_point = compact_points[0];
     transform_sum_.pos.x() = compact_point.x;
@@ -206,6 +208,7 @@ void PointMapping::CompactDataHandler(const sensor_msgs::PointCloud2ConstPtr &co
     transform_sum_.rot.w() = compact_point.intensity;
   }
 
+  // 特征点云
   {
     laser_cloud_corner_last_->clear();
     laser_cloud_surf_last_->clear();
@@ -996,6 +999,7 @@ void PointMapping::Process() {
     *laser_cloud_surf_from_map_ += *laser_cloud_surf_array_[laser_cloud_valid_idx_[i]];
   }
 
+  // TODO:又转换回来了？？？
   // prepare feature stack clouds for pose optimization
   size_t laser_cloud_corner_stack_size2 = laser_cloud_corner_stack_->points.size();
   for (int i = 0; i < laser_cloud_corner_stack_size2; ++i) {

@@ -380,12 +380,12 @@ bool ImuInitializer::EstimateExtrinsicRotation(CircularBuffer<PairTimeLaserTrans
     PairTimeLaserTransform &laser_trans_i = all_laser_transforms[i];
     PairTimeLaserTransform &laser_trans_j = all_laser_transforms[i + 1];
 
-    Eigen::Quaterniond delta_qij_imu = laser_trans_j.second.pre_integration->delta_q_;
+    Eigen::Quaterniond delta_qij_imu = laser_trans_j.second.pre_integration->delta_q_;// 预积分的结果本来就是相对位姿
 
     Eigen::Quaterniond delta_qij_laser
-        = (laser_trans_i.second.transform.rot.conjugate() * laser_trans_j.second.transform.rot).template cast<double>();
+        = (laser_trans_i.second.transform.rot.conjugate() * laser_trans_j.second.transform.rot).template cast<double>();// 激光里程计给的是绝对位姿
 
-    Eigen::Quaterniond delta_qij_laser_from_imu = rot_bl.conjugate() * delta_qij_imu * rot_bl;
+    Eigen::Quaterniond delta_qij_laser_from_imu = rot_bl.conjugate() * delta_qij_imu * rot_bl;// 根据imu计算出lidar之间的相对姿态
 
     double angular_distance = 180 / M_PI * delta_qij_laser.angularDistance(delta_qij_laser_from_imu);
 
@@ -393,6 +393,7 @@ bool ImuInitializer::EstimateExtrinsicRotation(CircularBuffer<PairTimeLaserTrans
 
     double huber = angular_distance > 5.0 ? 5.0 / angular_distance : 1.0;
 
+    // 
     Eigen::Matrix4d lq_mat = LeftQuatMatrix(delta_qij_laser);
     Eigen::Matrix4d rq_mat = RightQuatMatrix(delta_qij_imu);
 

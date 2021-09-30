@@ -285,6 +285,7 @@ class IntegrationBase {
     Vector3d result_linearized_ba;
     Vector3d result_linearized_bg;
 
+    // 在上一关键帧坐标系下积分
     MidPointIntegration(dt, acc0_, gyr0_, acc1, gyr1, delta_p_, delta_q_, delta_v_,
                         linearized_ba_, linearized_bg_,
                         result_delta_p, result_delta_q, result_delta_v,

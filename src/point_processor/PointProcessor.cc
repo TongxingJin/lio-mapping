@@ -122,6 +122,7 @@ void PointProcessor::SetupRos(ros::NodeHandle &nh) {
 
   is_ros_setup_ = true;
 
+  // 原始点云接收，转换，点云投影，特征提取和发布
   // subscribe to raw cloud topic
   sub_raw_points_ = nh.subscribe<sensor_msgs::PointCloud2>
       ("/velodyne_points", 2, &PointProcessor::PointCloudHandler, this);

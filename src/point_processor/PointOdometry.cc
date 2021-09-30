@@ -292,7 +292,7 @@ size_t PointOdometry::TransformToEnd(PointCloudPtr &cloud) {
 }
 
 void PointOdometry::Process() {
-  if (!HasNewData()) {
+  if (!HasNewData()) { // 判断数据同步
     // DLOG(INFO) << "no data received or dropped";
     return;
   }
@@ -737,6 +737,8 @@ void PointOdometry::PublishResults() {
       PointT compact_point;
 
       {
+        // 整合所有特征点云
+        // odo位置和姿态
         // NOTE: push_back odom
         compact_point.x = transform_sum_.pos.x();
         compact_point.y = transform_sum_.pos.y();
@@ -751,11 +753,13 @@ void PointOdometry::PublishResults() {
       }
 
       {
+        // 特征点数量
         compact_point.x = last_corner_cloud_->size();
         compact_point.y = last_surf_cloud_->size();
         compact_point.z = full_cloud_->size();
         compact_data.push_back(compact_point);
 
+        // 三种特征点云
         compact_data += (*last_corner_cloud_);
         compact_data += (*last_surf_cloud_);
         compact_data += (*full_cloud_);

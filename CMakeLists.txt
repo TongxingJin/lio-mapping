@@ -41,6 +41,7 @@ include_directories(${PCL_INCLUDE_DIRS})
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIR})
 
+set(Ceres_DIR /home/jin/Documents/tojintongxin/gears/x86_64/lib/cmake/Ceres)
 find_package(Ceres REQUIRED)
 include_directories(${CERES_INCLUDE_DIR})
 
