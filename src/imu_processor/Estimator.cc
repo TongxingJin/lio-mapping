@@ -524,6 +524,7 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
 
             if (extrinsic_stage_ == 2) {
               // TODO: move before initialization
+              // 使用imu和激光里程计数据校正角度外参
               bool extrinsic_result = ImuInitializer::EstimateExtrinsicRotation(all_laser_transforms_, transform_lb_);
               LOG(INFO) << ">>>>>>> extrinsic calibration"
                         << (extrinsic_result ? " successful"
@@ -534,7 +535,7 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
                 DLOG(INFO) << "change extrinsic stage to 1";
               }
             }
-
+            // 如果EstimateExtrinsicRotation成功，会将extrinsic_stage_从2修改为1
             if (extrinsic_stage_ != 2 && (header.stamp.toSec() - initial_time_) > 0.1) {
               DLOG(INFO) << "EXTRINSIC STAGE: " << extrinsic_stage_;
               init_result = RunInitialization();
@@ -543,9 +544,9 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
           }
 
           DLOG(INFO) << "initialization time: " << tic_toc_.Toc() << " ms";
-
+          // 如果上面RunInitialization成功
           if (init_result) {
-            stage_flag_ = INITED;
+            stage_flag_ = INITED;// switch语句在下一次将进入另一选项
             SetInitFlag(true);
 
             Q_WI_ = R_WI_;
@@ -563,12 +564,12 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
                 LOG(FATAL) << "FAILED TO CALL TURNING OFF THE ORIGINAL LASER ODOM";
               }
             }
-
+            // 对比差别
             for (size_t i = 0; i < estimator_config_.window_size + 1;
                  ++i) {
               Twist<double> transform_lb = transform_lb_.cast<double>();
 
-              Quaterniond Rs_li(Rs_[i] * transform_lb.rot.inverse());
+              Quaterniond Rs_li(Rs_[i] * transform_lb.rot.inverse());// 根据激光里程计计算出的imu的姿态
               Eigen::Vector3d Ps_li = Ps_[i] - Rs_li * transform_lb.pos;
 
               Twist<double> trans_li{Rs_li, Ps_li};
@@ -577,9 +578,10 @@ void Estimator::ProcessLaserOdom(const Transform &transform_in, const std_msgs::
               DLOG(INFO) << "TEST all_laser_transforms " << i << ": " << all_laser_transforms_[i].second.transform;
             }
 
+            // 利用ceres对窗口内的位姿做优化
             SolveOptimization();
 
-            SlideWindow();
+            SlideWindow();// 地图滑窗，新pivot之前的点都被存在stack中固化了，因为不会参与后续的优化
 
             for (size_t i = 0; i < estimator_config_.window_size + 1;
                  ++i) {
@@ -1367,6 +1369,7 @@ void Estimator::CalculateLaserOdom(const pcl::KdTreeFLANN<PointT>::Ptr &kdtree_s
   }
 }
 
+// 构建局部地图
 void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
   feature_frames.clear();
 
@@ -1390,13 +1393,14 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
   PointCloud local_normal;
 
   vector<Transform> local_transforms;
-  int pivot_idx = estimator_config_.window_size - estimator_config_.opt_window_size;
+  int pivot_idx = estimator_config_.window_size - estimator_config_.opt_window_size;// 地图锚点索引
 
   Twist<double> transform_lb = transform_lb_.cast<double>();
 
   Eigen::Vector3d Ps_pivot = Ps_[pivot_idx];
   Eigen::Matrix3d Rs_pivot = Rs_[pivot_idx];
 
+  // 计算imu的位姿
   Quaterniond rot_pivot(Rs_pivot * transform_lb.rot.inverse());
   Eigen::Vector3d pos_pivot = Ps_pivot - rot_pivot * transform_lb.pos;
 
@@ -1415,13 +1419,15 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
 #endif
     //endregion
 
+    // 如果没有初始化过地图的话
     if (!init_local_map_) {
       PointCloud transformed_cloud_surf, tmp_cloud_surf;
 
 #ifdef USE_CORNER
       PointCloud transformed_cloud_corner, tmp_cloud_corner;
 #endif
-
+      
+      // o->p帧点云转换到p所在的位姿下
       for (int i = 0; i <= pivot_idx; ++i) {
         Eigen::Vector3d Ps_i = Ps_[i];
         Eigen::Matrix3d Rs_i = Rs_[i];
@@ -1440,7 +1446,7 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
 #endif
       }
 
-      *(surf_stack_[pivot_idx]) = tmp_cloud_surf;
+      *(surf_stack_[pivot_idx]) = tmp_cloud_surf;// 替换掉pivot帧特征点云
 
 #ifdef USE_CORNER
       *(corner_stack_[pivot_idx]) = tmp_cloud_corner;
@@ -1449,8 +1455,10 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
       init_local_map_ = true;
     }
 
+    // 对于窗口内的每一帧
     for (int i = 0; i < estimator_config_.window_size + 1; ++i) {
-
+      
+      // 计算相对于pivot的位姿
       Eigen::Vector3d Ps_i = Ps_[i];
       Eigen::Matrix3d Rs_i = Rs_[i];
 
@@ -1461,9 +1469,9 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
       Eigen::Affine3f transform_pivot_i = (transform_pivot.inverse() * transform_li).cast<float>().transform();
 
       Transform local_transform = transform_pivot_i;
-      local_transforms.push_back(local_transform);
+      local_transforms.push_back(local_transform);// 保存相对位姿
 
-      if (i < pivot_idx) {
+      if (i < pivot_idx) { // 因为pivot之前的帧已经被保存在了surf_stack_[i]中
         continue;
       }
 
@@ -1484,11 +1492,11 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
 #endif
       //endregion
 
-
+      // 如果是最后一个，即索引为window_size个，不做任何处理
       // NOTE: exclude the latest one
       if (i != estimator_config_.window_size) {
         if (i == pivot_idx) {
-          *local_surf_points_ptr_ += *(surf_stack_[i]);
+          *local_surf_points_ptr_ += *(surf_stack_[i]);// pivot及之前的帧直接加入
 //          down_size_filter_surf_.setInputCloud(local_surf_points_ptr_);
 //          down_size_filter_surf_.filter(transformed_cloud_surf);
 //          *local_surf_points_ptr_ = transformed_cloud_surf;
@@ -1511,7 +1519,7 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
 #endif
         //endregion
         for (int p_idx = 0; p_idx < transformed_cloud_surf.size(); ++p_idx) {
-          transformed_cloud_surf[p_idx].intensity = i;
+          transformed_cloud_surf[p_idx].intensity = i;// 强度为帧索引
         }
         *local_surf_points_ptr_ += transformed_cloud_surf;
 #ifdef USE_CORNER
@@ -1522,6 +1530,7 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
 #endif
       }
     }
+    // 以上，将pivot之后一段时间范围内的帧都加入地图中
 
     DLOG(INFO) << "local_surf_points_ptr_->size() bef: " << local_surf_points_ptr_->size();
     down_size_filter_surf_.setInputCloud(local_surf_points_ptr_);
@@ -1558,14 +1567,15 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
   kdtree_corner_from_map->setInputCloud(local_corner_points_filtered_ptr_);
 #endif
 
+  // 累积scan和map之间的约束
   for (int idx = 0; idx < estimator_config_.window_size + 1; ++idx) {
 
     FeaturePerFrame feature_per_frame;
-    vector<unique_ptr<Feature>> features;
+    vector<unique_ptr<Feature>> features;// 一个Feature代表了一个观测
 //    vector<unique_ptr<Feature>> &features = feature_per_frame.features;
 
     TicToc t_features;
-
+    // 只考虑pivot之后的帧
     if (idx > pivot_idx) {
       if (idx != estimator_config_.window_size || !estimator_config_.imu_factor) {
 #ifdef USE_CORNER
@@ -1584,6 +1594,7 @@ void Estimator::BuildLocalMap(vector<FeaturePerFrame> &feature_frames) {
                            kdtree_corner_from_map, local_corner_points_filtered_ptr_, corner_stack_[idx],
                            local_transforms[idx], features);
 #else
+        // 与上面不同的是会对最后的位姿进行迭代优化，最后确定约束
         CalculateLaserOdom(kdtree_surf_from_map, local_surf_points_filtered_ptr_, surf_stack_[idx],
                            local_transforms[idx], features);
 #endif
@@ -1672,6 +1683,7 @@ void Estimator::SolveOptimization() {
 //  loss_function = new ceres::HuberLoss(0.5);
   loss_function = new ceres::CauchyLoss(1.0);
 
+  // 这部分没有起作用？
   // NOTE: update from laser transform
   if (estimator_config_.update_laser_imu) {
     DLOG(INFO) << "======= bef opt =======";
@@ -1748,10 +1760,12 @@ void Estimator::SolveOptimization() {
 
   vector<FeaturePerFrame> feature_frames;
 
+  // 以pivot为中心构建地图，主要是新增了pivot之后的新帧，累积pivot之后所有scan与map之间的约束保存在feature_frames中
   BuildLocalMap(feature_frames);
 
   vector<double *> para_ids;
 
+  // 增加参数项
   //region Add pose and speed bias parameters
   for (int i = 0; i < estimator_config_.opt_window_size + 1;
        ++i) {
@@ -1779,11 +1793,12 @@ void Estimator::SolveOptimization() {
 
 //  P_last0 = Ps_.last();
 
-  VectorToDouble();
+  VectorToDouble();// 用位姿和外参初始化para_pose_等参数项
 
   vector<ceres::internal::ResidualBlock *> res_ids_marg;
   ceres::internal::ResidualBlock *res_id_marg = NULL;
 
+  // 边缘化残差项，具体指的什么呢？
   //region Marginalization residual
   if (estimator_config_.marginalization_factor) {
     if (last_marginalization_info) {
@@ -1796,6 +1811,7 @@ void Estimator::SolveOptimization() {
   }
   //endregion
 
+  // 增加imu预积分得到的相邻帧间的约束，与相邻帧位姿和bias都有关，与外参无关
   vector<ceres::internal::ResidualBlock *> res_ids_pim;
 
   if (estimator_config_.imu_factor) {
@@ -1835,6 +1851,7 @@ void Estimator::SolveOptimization() {
     }
   }
 
+  // 增加scan与map之间的约束，与pivot帧位姿，scan位姿和外参都有关
   vector<ceres::internal::ResidualBlock *> res_ids_proj;
 
   if (estimator_config_.point_distance_factor) {
@@ -1897,6 +1914,7 @@ void Estimator::SolveOptimization() {
     }
   }
 
+  // TODO:增加外参先验约束，是不是说init和优化后的结果不能相差太大？？
   if (estimator_config_.prior_factor) {
     {
       Twist<double> trans_tmp = transform_lb_.cast<double>();
@@ -1929,13 +1947,14 @@ void Estimator::SolveOptimization() {
 
   options.max_solver_time_in_seconds = 0.10;
 
+  // 计算初始残差
   //region residual before optimization
   {
     double cost_pim = 0.0, cost_ppp = 0.0, cost_marg = 0.0;
     ///< Bef
     ceres::Problem::EvaluateOptions e_option;
     if (estimator_config_.imu_factor) {
-      e_option.parameter_blocks = para_ids;
+      e_option.parameter_blocks = para_ids;// 添加参数项指针和残差项指针
       e_option.residual_blocks = res_ids_pim;
       problem.Evaluate(e_option, &cost_pim, NULL, NULL, NULL);
       DLOG(INFO) << "bef_pim: " << cost_pim;
@@ -2588,7 +2607,7 @@ void Estimator::SlideWindow() { // NOTE: this function is only for the states an
       Eigen::Matrix3d Rs_pivot = Rs_[pivot_idx];
 
       Quaterniond rot_pivot(Rs_pivot * transform_lb.rot.inverse());
-      Eigen::Vector3d pos_pivot = Ps_pivot - rot_pivot * transform_lb.pos;
+      Eigen::Vector3d pos_pivot = Ps_pivot - rot_pivot * transform_lb.pos;// imu位姿
 
       Twist<double> transform_pivot = Twist<double>(rot_pivot, pos_pivot);
 
@@ -2608,11 +2627,11 @@ void Estimator::SlideWindow() { // NOTE: this function is only for the states an
       Eigen::Affine3f transform_i_pivot = (transform_li.inverse() * transform_pivot).cast<float>().transform();
       pcl::ExtractIndices<PointT> extract;
 
-      pcl::transformPointCloud(*(surf_stack_[pivot_idx]), *transformed_cloud_surf_ptr, transform_i_pivot);
+      pcl::transformPointCloud(*(surf_stack_[pivot_idx]), *transformed_cloud_surf_ptr, transform_i_pivot);// 局部地图转换到下一时刻
       pcl::PointIndices::Ptr inliers_surf(new pcl::PointIndices());
 
       for (int i = 0; i < size_surf_stack_[0]; ++i) {
-        inliers_surf->indices.push_back(i);
+        inliers_surf->indices.push_back(i);// 把最前面一定数量的点去掉
       }
       extract.setInputCloud(transformed_cloud_surf_ptr);
       extract.setIndices(inliers_surf);
@@ -2621,7 +2640,7 @@ void Estimator::SlideWindow() { // NOTE: this function is only for the states an
 
       filtered_surf_points += *(surf_stack_[i]);
 
-      *(surf_stack_[i]) = filtered_surf_points;
+      *(surf_stack_[i]) = filtered_surf_points;// 下一pivot的surf_stack_变成了局部地图
 
 #ifdef USE_CORNER
       pcl::transformPointCloud(*(corner_stack_[pivot_idx]), *transformed_cloud_corner_ptr, transform_i_pivot);

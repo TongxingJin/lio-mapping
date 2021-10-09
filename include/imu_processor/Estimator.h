@@ -86,7 +86,7 @@ struct EstimatorConfig {
 
   float min_match_sq_dis = 1.0;
   float min_plane_dis = 0.2;
-  Transform transform_lb{Eigen::Quaternionf(1, 0, 0, 0), Eigen::Vector3f(0, 0, -0.1)};
+  Transform transform_lb{Eigen::Quaternionf(1, 0, 0, 0), Eigen::Vector3f(0, 0, -0.1)};// lidar2base
 
   bool opt_extrinsic = false;
 
@@ -196,7 +196,7 @@ class Estimator : public MeasurementManager, public PointMapping {
   CircularBuffer<PairTimeLaserTransform> all_laser_transforms_{estimator_config_.window_size + 1};
 
   CircularBuffer<Vector3d> Ps_{estimator_config_.window_size + 1};
-  CircularBuffer<Matrix3d> Rs_{estimator_config_.window_size + 1};
+  CircularBuffer<Matrix3d> Rs_{estimator_config_.window_size + 1};// scan2map得到的lidar位姿
   CircularBuffer<Vector3d> Vs_{estimator_config_.window_size + 1};
   CircularBuffer<Vector3d> Bas_{estimator_config_.window_size + 1};
   CircularBuffer<Vector3d> Bgs_{estimator_config_.window_size + 1};

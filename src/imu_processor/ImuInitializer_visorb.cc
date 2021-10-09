@@ -393,7 +393,7 @@ bool ImuInitializer::EstimateExtrinsicRotation(CircularBuffer<PairTimeLaserTrans
 
     double huber = angular_distance > 5.0 ? 5.0 / angular_distance : 1.0;
 
-    // 
+    // 由于四元数的顺序为xyzw，因此这里的
     Eigen::Matrix4d lq_mat = LeftQuatMatrix(delta_qij_laser);
     Eigen::Matrix4d rq_mat = RightQuatMatrix(delta_qij_imu);
 
@@ -413,7 +413,7 @@ bool ImuInitializer::EstimateExtrinsicRotation(CircularBuffer<PairTimeLaserTrans
 //  DLOG(INFO) << ">>>>>>> A <<<<<<<" << endl << A;
 
   Eigen::JacobiSVD<MatrixXd> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
-  Eigen::Matrix<double, 4, 1> x = svd.matrixV().col(3);
+  Eigen::Matrix<double, 4, 1> x = svd.matrixV().col(3);// 最小特征值对应的v中的特征向量
   Quaterniond estimated_qlb(x);
 
   transform_lb.rot = estimated_qlb.cast<float>().toRotationMatrix();
